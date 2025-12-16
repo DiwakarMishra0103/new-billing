@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Expense } from '../types';
 import { EXPENSE_CATEGORIES, formatCurrency } from '../constants';
@@ -115,18 +114,20 @@ const ExpensesManager: React.FC<ExpensesManagerProps> = ({ expenses, setExpenses
            <div className="flex-1 w-full h-48">
               {categoryData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <RechartsPie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={40}
-                    outerRadius={70}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
+                  <RechartsPie>
+                    <Pie
+                      data={categoryData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={40}
+                      outerRadius={70}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {categoryData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
                     <Tooltip formatter={(value: number) => formatCurrency(value)} />
                     <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{fontSize: '12px'}}/>
                   </RechartsPie>
