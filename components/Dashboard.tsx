@@ -1,16 +1,17 @@
 import React, { useState, useMemo } from 'react';
-import { Client, Expense } from '../types';
+import { Client, Expense, AgencyProfile } from '../types';
 import { formatCurrency } from '../constants';
-import { TrendingUp, AlertCircle, Users, Wallet, CalendarClock, MessageCircle, X, Bell, Download, FileDown, Receipt, PiggyBank, BarChart3, LineChart } from 'lucide-react';
+import { TrendingUp, AlertCircle, Users, Wallet, CalendarClock, MessageCircle, X, Bell, Download, FileDown, Receipt, PiggyBank, BarChart3, LineChart, BellRing, Mail } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Legend } from 'recharts';
 import { generateClientMessage } from '../services/geminiService';
 
 interface DashboardProps {
   clients: Client[];
   expenses: Expense[];
+  agencyProfile: AgencyProfile;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ clients, expenses }) => {
+const Dashboard: React.FC<DashboardProps> = ({ clients, expenses, agencyProfile }) => {
   const [generatedMessage, setGeneratedMessage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -152,7 +153,8 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, expenses }) => {
     const billingDay = start.getDate();
     let nextDate = new Date(today.getFullYear(), today.getMonth(), billingDay);
     
-    if (nextDate.getTime() < today.getTime() - (5 * 24 * 60 * 60 * 1000)) {
+    // If billing day for this month passed, go to next month
+    if (nextDate.getTime() < today.getTime() - (24 * 60 * 60 * 1000)) { // Small buffer for "today"
         nextDate = new Date(today.getFullYear(), today.getMonth() + 1, billingDay);
     }
     return nextDate;
@@ -169,11 +171,29 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, expenses }) => {
     .filter(item => item.daysUntil <= 7 && item.daysUntil >= -5)
     .sort((a, b) => a.daysUntil - b.daysUntil);
 
+  // Filter for the "2 Days Before" Alert
+  const remindersDueInTwoDays = upcomingRenewals.filter(c => c.daysUntil === 2 || c.daysUntil === 1);
+
   const handleReminderClick = async (client: Client) => {
     setIsGenerating(true);
     const msg = await generateClientMessage(client, 'MONTHLY_PAYMENT_REMINDER', 0);
     setGeneratedMessage(msg);
     setIsGenerating(false);
+  };
+
+  const notifyOwner = (channel: 'WHATSAPP' | 'EMAIL') => {
+    if (remindersDueInTwoDays.length === 0) return;
+
+    const names = remindersDueInTwoDays.map(c => `${c.businessName} (${formatCurrency(c.dealAmount)})`).join(', ');
+    const message = `🔔 AgencyFlow Alert: The following payments are due in ~2 days:\n\n${names}\n\nPlease follow up with these clients regarding their monthly renewals.`;
+
+    if (channel === 'WHATSAPP') {
+       const url = `https://wa.me/${agencyProfile.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(message)}`;
+       window.open(url, '_blank');
+    } else {
+       const url = `mailto:${agencyProfile.email}?subject=Payment Reminders (Due in 2 Days)&body=${encodeURIComponent(message)}`;
+       window.location.href = url;
+    }
   };
 
   return (
@@ -214,6 +234,38 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, expenses }) => {
             )}
          </div>
       </div>
+
+      {/* ALERT BANNER for 2-Day Reminders */}
+      {remindersDueInTwoDays.length > 0 && (
+         <div className="bg-gradient-to-r from-indigo-900 to-indigo-800 rounded-xl p-6 text-white shadow-xl flex flex-col md:flex-row justify-between items-center gap-6 animate-in slide-in-from-top-4">
+            <div className="flex items-start gap-4">
+               <div className="bg-white/20 p-3 rounded-full animate-pulse">
+                  <BellRing className="h-6 w-6 text-white" />
+               </div>
+               <div>
+                  <h3 className="font-bold text-lg">Action Required: {remindersDueInTwoDays.length} Payments Due in ~2 Days</h3>
+                  <p className="text-indigo-200 text-sm mt-1">
+                     Clients: {remindersDueInTwoDays.map(c => c.businessName).join(', ')}.
+                  </p>
+                  <p className="text-xs text-indigo-300 mt-2">Send a reminder to yourself now to ensure collection.</p>
+               </div>
+            </div>
+            <div className="flex gap-3 w-full md:w-auto">
+               <button 
+                  onClick={() => notifyOwner('WHATSAPP')}
+                  className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white px-4 py-2.5 rounded-lg font-bold text-sm shadow-md transition-colors whitespace-nowrap"
+               >
+                  <MessageCircle className="h-4 w-4" /> Notify Me (WhatsApp)
+               </button>
+               <button 
+                  onClick={() => notifyOwner('EMAIL')}
+                  className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 px-4 py-2.5 rounded-lg font-bold text-sm transition-colors whitespace-nowrap"
+               >
+                  <Mail className="h-4 w-4" /> Notify Me (Email)
+               </button>
+            </div>
+         </div>
+      )}
 
       {/* Reminder Modal */}
       {generatedMessage && (
@@ -315,7 +367,7 @@ const Dashboard: React.FC<DashboardProps> = ({ clients, expenses }) => {
                        disabled={isGenerating}
                        className="flex items-center gap-1 text-xs bg-white border border-slate-200 text-slate-700 px-2 py-1.5 rounded hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition-colors"
                      >
-                        <Bell className="h-3 w-3" /> Remind
+                        <Bell className="h-3 w-3" /> Remind Client
                      </button>
                   </div>
                 </div>

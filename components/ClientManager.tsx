@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Client, ServiceDefinition, ClientStatus } from '../types';
 import { formatCurrency } from '../constants';
-import { Plus, Search, Calendar, CheckCircle2, MessageCircle, Mail, X, Pencil, Wand2, FileText, History, Trash2, PauseCircle, StopCircle, PlayCircle, AlertCircle, Filter } from 'lucide-react';
+import { Plus, Search, Calendar, CheckCircle2, MessageCircle, Mail, X, Pencil, Wand2, FileText, History, Trash2, PauseCircle, StopCircle, PlayCircle, AlertCircle, Filter, ChevronDown } from 'lucide-react';
 import { generateClientMessage } from '../services/geminiService';
 
 interface ClientManagerProps {
@@ -22,6 +22,9 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, services, setCli
   // Payment Modal State
   const [showPaymentModal, setShowPaymentModal] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
+  
+  // Custom Dropdown State
+  const [isStatusOpen, setIsStatusOpen] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState<Partial<Client>>({
@@ -120,6 +123,7 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, services, setCli
     setShowForm(false);
     setEditingClientId(null);
     setFormData({ services: [], status: 'ACTIVE' });
+    setIsStatusOpen(false);
   };
 
   const handleRecordPayment = () => {
@@ -358,19 +362,38 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, services, setCli
                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">End Date</label>
                     <input type="date" value={formData.endDate || ''} className={inputClass} onChange={e => setFormData({...formData, endDate: e.target.value})} />
                  </div>
-                 <div>
+                 <div className="relative">
                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">Status</label>
-                    <select 
-                      value={formData.status || 'ACTIVE'} 
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value as ClientStatus })}
-                      className={inputClass}
+                    <button
+                      type="button"
+                      onClick={() => setIsStatusOpen(!isStatusOpen)}
+                      className="w-full flex items-center justify-between p-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm text-sm"
                     >
-                      <option value="LEAD">Lead</option>
-                      <option value="ACTIVE">Active</option>
-                      <option value="PAUSED">Paused</option>
-                      <option value="STOPPED">Stopped</option>
-                      <option value="CLOSED">Closed</option>
-                    </select>
+                      <span className="capitalize">{formData.status ? formData.status.toLowerCase() : 'Active'}</span>
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                    </button>
+                    
+                    {isStatusOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setIsStatusOpen(false)}></div>
+                        <div className="absolute top-full left-0 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-20 py-1 animate-in fade-in zoom-in-95 duration-100">
+                          {['LEAD', 'ACTIVE', 'PAUSED', 'STOPPED', 'CLOSED'].map((option) => (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() => {
+                                setFormData({ ...formData, status: option as ClientStatus });
+                                setIsStatusOpen(false);
+                              }}
+                              className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-slate-50 transition-colors capitalize ${formData.status === option ? 'text-indigo-600 bg-indigo-50 font-medium' : 'text-slate-700'}`}
+                            >
+                              {option.toLowerCase()}
+                              {formData.status === option && <CheckCircle2 className="h-4 w-4" />}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
                  </div>
               </div>
             </div>

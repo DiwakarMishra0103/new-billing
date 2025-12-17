@@ -31,7 +31,7 @@ const DEFAULT_CUSTOM_TEMPLATE = `
   .invoice-box { max-width: 800px; margin: auto; padding: 30px; border: 1px solid #eee; font-family: 'Helvetica Neue', 'Helvetica', Helvetica, Arial, sans-serif; color: #555; }
   .invoice-box table { width: 100%; line-height: inherit; text-align: left; }
   .invoice-box table td { padding: 5px; vertical-align: top; }
-  .invoice-box table tr td:nth-child(2) { text-align: right; }
+  .invoice-box table tr td:nth-child(3) { text-align: right; }
   .top-header { background: #333; color: #fff; padding: 20px; margin-bottom: 20px; }
   .heading td { background: #eee; border-bottom: 1px solid #ddd; font-weight: bold; }
   .item td { border-bottom: 1px solid #eee; }
@@ -47,13 +47,13 @@ const DEFAULT_CUSTOM_TEMPLATE = `
   
   <table cellpadding="0" cellspacing="0">
     <tr>
-       <td colspan="2">
+       <td colspan="3">
           <strong>Invoice #:</strong> {{invoice_number}}<br>
           <strong>Date:</strong> {{date}}
        </td>
     </tr>
     <tr>
-       <td style="padding-top: 20px; padding-bottom: 20px;">
+       <td colspan="2" style="padding-top: 20px; padding-bottom: 20px;">
           <strong>Bill To:</strong><br>
           {{client_business}}<br>
           {{client_name}}<br>
@@ -74,6 +74,7 @@ const DEFAULT_CUSTOM_TEMPLATE = `
   <table cellpadding="0" cellspacing="0">
     <tr class="heading">
        <td>Item</td>
+       <td>HSN/SAC</td>
        <td>Price</td>
     </tr>
     
@@ -81,6 +82,7 @@ const DEFAULT_CUSTOM_TEMPLATE = `
     {{services_table_rows}}
     
     <tr class="total">
+       <td></td>
        <td></td>
        <td style="padding-top: 20px;">
           Subtotal: {{subtotal}}<br>
@@ -90,9 +92,11 @@ const DEFAULT_CUSTOM_TEMPLATE = `
     </tr>
     <tr>
        <td></td>
+       <td></td>
        <td style="color: green;">Paid: {{paid_amount}}</td>
     </tr>
     <tr>
+       <td></td>
        <td></td>
        <td style="color: red; font-weight: bold;">Due: {{due_amount}}</td>
     </tr>
@@ -128,6 +132,7 @@ const numberToWords = (num: number): string => {
 };
 
 const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = ({ client, agencyProfile, setAgencyProfile, onBack }) => {
+  const invoiceRef = useRef<HTMLDivElement>(null);
   const [invoiceNumber, setInvoiceNumber] = useState('');
   // Editable Invoice Date
   const [invoiceDate, setInvoiceDate] = useState(new Date().toLocaleDateString('en-IN', {
@@ -319,10 +324,136 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = ({ client, agencyProfi
     setIsEditingCustom(false);
   };
 
+  // --- PRINT FUNCTIONALITY (Isolated Popup with Text Replacement) ---
+  const handlePrint = () => {
+    const content = invoiceRef.current;
+    if (!content) return;
+
+    // 1. Clone the node to avoid messing with the current UI
+    const clone = content.cloneNode(true) as HTMLElement;
+
+    // 2. Identify original and cloned inputs
+    // We need to reference the original inputs to get the current values and computed styles
+    const originalInputs = content.querySelectorAll('input, textarea');
+    const clonedInputs = clone.querySelectorAll('input, textarea');
+
+    // 3. Replace all cloned inputs/textareas with styled Text Divs
+    // This ensures they print as normal text without borders, scrollbars, or form styling
+    originalInputs.forEach((original, index) => {
+        const cloned = clonedInputs[index];
+        const val = (original as HTMLInputElement | HTMLTextAreaElement).value;
+        const computed = window.getComputedStyle(original);
+
+        // Create a text container
+        const textNode = document.createElement('div');
+        textNode.textContent = val;
+        
+        // Copy critical typography styles to match the editor look
+        textNode.style.fontFamily = computed.fontFamily;
+        textNode.style.fontWeight = computed.fontWeight;
+        textNode.style.fontSize = computed.fontSize;
+        textNode.style.textAlign = computed.textAlign;
+        textNode.style.color = computed.color;
+        
+        // Layout styles
+        textNode.style.width = '100%';
+        textNode.style.whiteSpace = 'pre-wrap'; // Preserve line breaks for textareas
+        textNode.style.wordBreak = 'break-word';
+        textNode.style.display = 'block';
+        textNode.style.lineHeight = computed.lineHeight;
+
+        // Replace the input in the clone
+        if (cloned.parentNode) {
+            cloned.parentNode.replaceChild(textNode, cloned);
+        }
+    });
+
+    // 4. Remove UI-only elements from the clone (Buttons, Placeholders)
+    const uiElements = clone.querySelectorAll('button, .no-print');
+    uiElements.forEach(el => el.remove());
+
+    // 5. Open a new window for printing
+    const printWindow = window.open('', '_blank', 'height=900,width=1000');
+    if (!printWindow) {
+        alert("Please allow popups to print the invoice.");
+        return;
+    }
+
+    // 6. Construct the print document with print-specific CSS
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Invoice - ${invoiceNumber}</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+                
+                body { 
+                    font-family: 'Inter', sans-serif;
+                    background: white; 
+                    -webkit-print-color-adjust: exact; 
+                    print-color-adjust: exact; 
+                    margin: 0;
+                    padding: 0;
+                }
+                
+                /* Standard A4 Settings */
+                @page {
+                    size: A4;
+                    margin: 10mm; 
+                }
+
+                /* Layout Resets for Print */
+                .invoice-container {
+                    width: 100% !important;
+                    max-width: none !important;
+                    box-shadow: none !important;
+                    border: none !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }
+
+                /* Ensure tables don't break awkwardly */
+                table { width: 100% !important; table-layout: fixed; }
+                tr { page-break-inside: avoid; }
+                
+                /* Color corrections for print (ensure contrast) */
+                h1, h2, h3, h4, h5, h6 { color: #111827 !important; }
+                .text-slate-500, .text-slate-400 { color: #64748b !important; }
+                .text-slate-900 { color: #0f172a !important; }
+
+                /* Specific Template Tweaks */
+                .bg-slate-50 { background-color: #f8fafc !important; }
+                .bg-slate-100 { background-color: #f1f5f9 !important; }
+                .bg-slate-900 { background-color: #0f172a !important; color: white !important; }
+                
+                /* Tax Invoice Grid Lines */
+                .border-black { border-color: #000 !important; }
+            </style>
+        </head>
+        <body>
+            ${clone.outerHTML}
+            <script>
+                window.onload = function() {
+                    // Small delay to ensure Tailwind computes styles before printing
+                    setTimeout(function() {
+                        window.print();
+                        window.close();
+                    }, 500); 
+                };
+            </script>
+        </body>
+        </html>
+    `);
+    
+    printWindow.document.close();
+  };
+
   const inputClass = "w-full p-2.5 border border-slate-200 rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow shadow-sm placeholder-slate-400";
   
   // Style for editable inputs in invoice
-  const editableInputClass = "bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none w-full transition-colors rounded-sm px-1 py-0.5 print:border-none print:bg-transparent print:p-0";
+  const editableInputClass = "bg-white text-slate-900 border border-slate-200 shadow-sm hover:border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none w-full transition-all rounded px-2 py-1 print:border-none print:bg-transparent print:p-0 print:shadow-none print:resize-none";
 
   // --- Process Custom Template ---
   const processCustomTemplate = () => {
@@ -364,7 +495,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = ({ client, agencyProfi
     // Special: Services Table Rows
     let rowsHtml = '';
     items.forEach(item => {
-         rowsHtml += `<tr class="item"><td>${item.description}</td><td>${formatCurrency(item.rate * item.quantity)}</td></tr>`;
+         rowsHtml += `<tr class="item"><td>${item.description}</td><td>${item.hsn}</td><td>${formatCurrency(item.rate * item.quantity)}</td></tr>`;
     });
     template = template.replace('{{services_table_rows}}', rowsHtml);
 
@@ -447,7 +578,8 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = ({ client, agencyProfi
           <table className="w-full text-left border-collapse min-w-[500px]">
             <thead>
                 <tr className="border-b border-slate-200">
-                  <th className="py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-1/2 pl-2">Description</th>
+                  <th className="py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-1/3 pl-2">Description</th>
+                  <th className="py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider w-24">HSN/SAC</th>
                   <th className="py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Rate</th>
                   <th className="py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Qty</th>
                   <th className="py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider pr-2">Amount</th>
@@ -465,6 +597,15 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = ({ client, agencyProfi
                           className={`${editableInputClass} font-bold text-slate-800 text-sm`}
                         />
                         <p className="text-xs text-slate-400 mt-1 print:text-slate-600 pl-1">Professional Services</p>
+                      </td>
+                      <td className="py-5 text-right text-slate-600 text-sm font-medium">
+                        <input 
+                          type="text" 
+                          value={item.hsn}
+                          onChange={(e) => handleUpdateItem(idx, 'hsn', e.target.value)}
+                          className={`${editableInputClass} text-right w-full`}
+                          placeholder="HSN"
+                        />
                       </td>
                       <td className="py-5 text-right text-slate-600 text-sm font-medium">
                         <input 
@@ -599,6 +740,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = ({ client, agencyProfi
             <thead>
                <tr className="border-b-2 border-slate-800">
                   <th className="py-3 text-left font-bold uppercase text-sm">Description</th>
+                  <th className="py-3 text-right font-bold uppercase text-sm">HSN/SAC</th>
                   <th className="py-3 text-right font-bold uppercase text-sm">Rate</th>
                   <th className="py-3 text-right font-bold uppercase text-sm">Qty</th>
                   <th className="py-3 text-right font-bold uppercase text-sm">Amount</th>
@@ -614,6 +756,15 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = ({ client, agencyProfi
                           value={item.description}
                           onChange={(e) => handleUpdateItem(idx, 'description', e.target.value)}
                           className={`${editableInputClass} font-serif`}
+                        />
+                     </td>
+                     <td className="py-4 text-right font-medium">
+                        <input 
+                          type="text" 
+                          value={item.hsn}
+                          onChange={(e) => handleUpdateItem(idx, 'hsn', e.target.value)}
+                          className={`${editableInputClass} text-right w-24 font-serif`}
+                          placeholder="HSN"
                         />
                      </td>
                      <td className="py-4 text-right font-medium">
@@ -707,6 +858,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = ({ client, agencyProfi
             <thead>
                <tr className="border-b border-black">
                   <th className="text-left py-4 text-xs font-bold uppercase tracking-wider">Item</th>
+                  <th className="text-right py-4 text-xs font-bold uppercase tracking-wider">HSN/SAC</th>
                   <th className="text-right py-4 text-xs font-bold uppercase tracking-wider">Rate</th>
                   <th className="text-right py-4 text-xs font-bold uppercase tracking-wider">Qty</th>
                   <th className="text-right py-4 text-xs font-bold uppercase tracking-wider">Total</th>
@@ -722,6 +874,15 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = ({ client, agencyProfi
                           value={item.description}
                           onChange={(e) => handleUpdateItem(idx, 'description', e.target.value)}
                           className={`${editableInputClass} text-lg font-light`}
+                        />
+                     </td>
+                     <td className="py-6 text-right">
+                        <input 
+                          type="text" 
+                          value={item.hsn}
+                          onChange={(e) => handleUpdateItem(idx, 'hsn', e.target.value)}
+                          className={`${editableInputClass} text-lg font-light text-right w-24`}
+                          placeholder="HSN"
                         />
                      </td>
                      <td className="py-6 text-right">
@@ -1227,43 +1388,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = ({ client, agencyProfi
   );
 
   return (
-    <div className="bg-slate-50 min-h-screen font-sans flex flex-col">
-      {/* GLOBAL PRINT STYLES */}
-      <style>{`
-        @media print {
-          @page { margin: 0; size: auto; }
-          body { 
-            -webkit-print-color-adjust: exact !important; 
-            print-color-adjust: exact !important; 
-            background: white !important;
-          }
-          /* Hide everything by default */
-          body * { visibility: hidden; }
-          
-          /* Show only the invoice container and its children */
-          #printable-invoice, #printable-invoice * { 
-            visibility: visible; 
-          }
-          
-          /* Position the invoice at top-left of page */
-          #printable-invoice { 
-            position: absolute; 
-            left: 0; 
-            top: 0; 
-            width: 100%; 
-            margin: 0; 
-            padding: 30px 40px; /* Standard print padding */
-            background: white;
-            min-height: 100vh;
-            border: none;
-            box-shadow: none;
-          }
-
-          /* Hide scrollbars & toolbars */
-          ::-webkit-scrollbar { display: none; }
-          .no-print { display: none !important; }
-        }
-      `}</style>
+    <div className="bg-slate-50 min-h-screen font-sans flex flex-col print:block print:bg-white print:h-auto print:overflow-visible">
       
       {/* Sticky Toolbar */}
       <div className="sticky top-0 z-20 bg-white border-b border-slate-200 shadow-sm px-4 py-3 no-print">
@@ -1367,7 +1492,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = ({ client, agencyProfi
                <button onClick={handleEmailShare} className="flex items-center gap-2 bg-white text-slate-700 border border-slate-200 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors shadow-sm text-sm font-medium">
                   <Mail className="h-4 w-4" /> <span className="hidden sm:inline">Email</span>
                </button>
-               <button onClick={() => window.print()} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium">
+               <button onClick={handlePrint} type="button" className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium">
                   <Printer className="h-4 w-4" /> Print
                </button>
             </div>
@@ -1531,8 +1656,12 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = ({ client, agencyProfi
       )}
 
       {/* Main Invoice Canvas */}
-      <div className="flex-1 overflow-auto p-4 md:p-8 bg-slate-100 flex justify-center items-start">
-         <div className="w-full max-w-[210mm] bg-white shadow-xl rounded-sm print:shadow-none print:w-full print:max-w-none print:m-0" id="printable-invoice">
+      <div className="flex-1 overflow-auto p-4 md:p-8 bg-slate-100 flex justify-center items-start invoice-scroll-wrapper print:overflow-visible print:block print:h-auto print:p-0 print:m-0">
+         <div 
+           ref={invoiceRef}
+           className="w-full max-w-[210mm] bg-white shadow-xl rounded-sm print:shadow-none print:w-full print:max-w-none print:m-0" 
+           id="printable-invoice"
+         >
             {currentTemplate === 'MODERN' && <ModernTemplate />}
             {currentTemplate === 'CLASSIC' && <ClassicTemplate />}
             {currentTemplate === 'MINIMAL' && <MinimalTemplate />}
