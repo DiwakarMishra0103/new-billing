@@ -1,7 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 import { Client, Expense } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safe initialization to prevent crash if API Key is missing during preview/deploy
+const apiKey = process.env.API_KEY || "dummy_key_for_build"; 
+const ai = new GoogleGenAI({ apiKey });
 
 // Generate a polite payment reminder or a project update message
 export const generateClientMessage = async (
@@ -9,6 +11,9 @@ export const generateClientMessage = async (
   type: 'PAYMENT_REMINDER' | 'WELCOME' | 'INVOICE_EMAIL' | 'MONTHLY_PAYMENT_REMINDER',
   dueAmount: number
 ): Promise<string> => {
+  if (apiKey === "dummy_key_for_build") {
+    return "API Key is missing. Please configure Vercel Environment Variables.";
+  }
   try {
     const model = 'gemini-2.5-flash';
     
@@ -62,6 +67,9 @@ export const chatWithData = async (
   clients: Client[],
   expenses: Expense[]
 ): Promise<string> => {
+  if (apiKey === "dummy_key_for_build") {
+    return "Please set your Gemini API Key in Vercel Environment Variables to use this feature.";
+  }
   try {
     // 1. Prepare a lightweight summary of the data to save tokens and provide context
     const clientsSummary = clients.map(c => {
